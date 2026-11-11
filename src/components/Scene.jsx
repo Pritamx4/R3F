@@ -1,6 +1,9 @@
 import { useTexture } from "@react-three/drei";
-import { useMemo } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import fragmentShader from "../shaders/fragmentShader.glsl";
+import vertexShader from "../shaders/vertexShader.glsl";
 
 const IMAGES = [
     "https://plus.unsplash.com/premium_photo-1793901825241-a5bfb9fc100a?q=80&w=715&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D",
@@ -15,8 +18,9 @@ const CARDHEIGHT = 1;
 const CARDWIDTH = 2;
 const RADIUS = 3;
 const TOTALCARDS = IMAGES.length;
+const LERPRATIO = 0.05;
 
-const Card = ({ index, texture }) => {
+const Card = ({ index, texture, scrollSpeedRef }) => {
     const angle = (index / TOTALCARDS) * Math.PI * 2;
     const position = useMemo(() => {
         const x = RADIUS * Math.sin(angle);
@@ -25,11 +29,30 @@ const Card = ({ index, texture }) => {
         return [x, 0, z];
     }, [angle]);
 
+    const uniforms = {
+        uTexture: { value: texture },
+        uScrollSpeed: { value: 0 },
+    };
+
+    const materialRef = useRef(null);
+    useFrame(() => {
+        if (materialRef.current) {
+            materialRef.current.uniforms.uScrollSpeed.value =
+                scrollSpeedRef.current;
+        }
+    });
+
     return (
         <>
             <mesh position={position} rotation={[0, angle, 0]}>
                 <planeGeometry args={[CARDWIDTH, CARDHEIGHT, 32, 32]} />
-                <meshStandardMaterial side={THREE.DoubleSide} map={texture} />
+                <shaderMaterial
+                    ref={materialRef}
+                    side={THREE.DoubleSide}
+                    uniforms={uniforms}
+                    vertexShader={vertexShader}
+                    fragmentShader={fragmentShader}
+                />
             </mesh>
         </>
     );
@@ -37,6 +60,42 @@ const Card = ({ index, texture }) => {
 
 const Scene = () => {
     const textures = useTexture(IMAGES);
+
+    const groupRef = useRef(null);
+
+    const currentRotationRef = useRef(0);
+    const targetRotationRef = useRef(0);
+    const currentScrollSpeedRef = useRef(0);
+    const targetScrollSpeedRef = useRef(0);
+
+    const { gl } = useThree();
+
+    useEffect(() => {
+        const canvas = gl.domElement;
+        const handleScroll = (e) => {
+            e.preventDefault();
+            targetRotationRef.current += e.deltaY * 0.003;
+            targetScrollSpeedRef.current = e.deltaY * 0.003;
+        };
+        canvas.addEventListener("wheel", handleScroll, { passive: false });
+
+        return () => {
+            canvas.removeEventListener("wheel", handleScroll);
+        };
+    }, [gl]);
+
+    useFrame(() => {
+        if (!groupRef.current) return;
+        currentRotationRef.current +=
+            (targetRotationRef.current - currentRotationRef.current) *
+            LERPRATIO;
+        currentScrollSpeedRef.current +=
+            (targetScrollSpeedRef.current - currentScrollSpeedRef.current) *
+            LERPRATIO;
+        groupRef.current.rotation.y = currentRotationRef.current;
+        targetScrollSpeedRef.current *= 0.08;
+    });
+
     useMemo(() => {
         textures.forEach((tex) => {
             tex.minFilter = THREE.LinearFilter;
@@ -48,9 +107,14 @@ const Scene = () => {
     return (
         <>
             <ambientLight intensity={1} />
-            <group>
+            <group ref={groupRef}>
                 {textures.map((texture, idx) => (
-                    <Card key={idx} index={idx} texture={texture} />
+                    <Card
+                        scrollSpeedRef={currentScrollSpeedRef}
+                        key={idx}
+                        index={idx}
+                        texture={texture}
+                    />
                 ))}
             </group>
         </>
