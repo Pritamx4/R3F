@@ -1,13 +1,13 @@
 import { Canvas } from '@react-three/fiber'
+import Scene from './components/Scene'
+import { OrbitControls } from '@react-three/drei'
 
 const App = () => {
   return (
     <div className='h-screen w-full'>
       <Canvas>
-        <mesh>
-          <boxGeometry />
-          <meshBasicMaterial color='red' />
-        </mesh>
+        <OrbitControls/>
+        <Scene/>
       </Canvas>
     </div>
   )
